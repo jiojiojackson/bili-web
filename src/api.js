@@ -2,9 +2,12 @@ import {md5} from 'js-md5';
 export let session='';
 export const setSession=value=>{session=value};
 let wbiKey='',keyTime=0;
+let device='';
+export async function bootstrapDevice(){try{const cached=JSON.parse(localStorage.getItem('bili:device'));if(cached?.cookie&&Date.now()-cached.at<7*86400000){device=cached.cookie;return}}catch{}try{const d=await api('device',{},false);device=d.cookie||'';localStorage.setItem('bili:device',JSON.stringify({cookie:device,at:Date.now()}))}catch{}}
 export class BiliError extends Error{constructor(message,code){super(message);this.code=code}}
 export async function api(route,params={},authenticated=true){
-  let response;try{response=await fetch('/api/bili',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({route,params,...(authenticated&&session?{cookie:session}:{})}),cache:'no-store',signal:AbortSignal.timeout(23000)})}catch(e){throw new BiliError(e.name==='TimeoutError'?'请求超时，轻点重试':'网络连接中断，请检查网络',-502)}
+  const cookies=new Map();for(const part of `${device}; ${authenticated?session:''}`.split(';')){const i=part.indexOf('=');if(i>0)cookies.set(part.slice(0,i).trim(),part.slice(i+1))}const cookie=[...cookies].map(([k,v])=>`${k}=${v}`).join('; ');
+  let response;try{response=await fetch('/api/bili',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({route,params,...(cookie?{cookie}:{})}),cache:'no-store',signal:AbortSignal.timeout(26000)})}catch(e){throw new BiliError(e.name==='TimeoutError'?'请求超时，轻点重试':'网络连接中断，请检查网络',-502)}
   let data;try{data=await response.json()}catch{throw new BiliError('服务暂时不可用，请稍后再试',-502)}
   if(route==='nav'&&data.code===-101&&data.data)return data.data;
   if(data.code!==0)throw new BiliError(data.code===-101?'登录已过期，请重新扫码':data.code===-412?'B 站触发了网络风控，请稍后重试':data.message||'请求失败',data.code);

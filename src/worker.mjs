@@ -1,5 +1,5 @@
 // Stateless, read-only Bilibili relay. No KV, database, cookies, or request logging.
-const UA='bili-web/1.0';
+const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36';
 const ROUTES={
   nav:['api.bilibili.com','/x/web-interface/nav'],
   feed:['api.bilibili.com','/x/web-interface/wbi/index/top/feed/rcmd'],
@@ -15,6 +15,7 @@ const ROUTES={
   qrPoll:['passport.bilibili.com','/x/passport-login/web/qrcode/poll']
 };
 const COOKIE_NAMES=new Set(['SESSDATA','bili_jct','DedeUserID','DedeUserID__ckMd5','sid','buvid3','buvid4','b_nut']);
+const DEVICE_NAMES=new Set(['buvid3','buvid4','b_nut']);
 const SECURITY={'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-store, private','Vary':'Origin'};
 export function cleanCookie(raw=''){
   return String(raw).split(';').map(p=>p.trim()).filter(p=>{const i=p.indexOf('=');return i>0&&COOKIE_NAMES.has(p.slice(0,i))&&!/[\r\n\x00-\x1f]/.test(p)&&p.length<4096}).join('; ');
@@ -30,6 +31,18 @@ async function relay(request){
   if(raw.length>16384)return json({code:-413,message:'请求过大'},413);
   let body;try{body=JSON.parse(raw)}catch{return json({code:-400,message:'无效请求'},400)}
   if(!body||typeof body!=='object'||Array.isArray(body)||body.params!==undefined&&(!body.params||typeof body.params!=='object'||Array.isArray(body.params)))return json({code:-400,message:'无效请求'},400);
+  const clientUA=request.headers.get('User-Agent')||'';
+  const headers={'User-Agent':/^Mozilla\//.test(clientUA)&&clientUA.length<512?clientUA:UA,'Referer':'https://www.bilibili.com/','Origin':'https://www.bilibili.com','Accept':'application/json','Accept-Language':'zh-CN,zh;q=0.9'};
+  if(body.route==='device'){
+    try{
+      const home=await fetch('https://www.bilibili.com/',{headers:{...headers,Accept:'text/html'},redirect:'manual',signal:AbortSignal.timeout(12000)});
+      const cookies=(home.headers.getSetCookie?.()||[]).map(c=>c.split(';')[0]).filter(c=>DEVICE_NAMES.has(c.split('=')[0]));
+      await home.body?.cancel();
+      if(!cookies.some(c=>c.startsWith('buvid3='))){const r=await fetch('https://api.bilibili.com/x/frontend/finger/spi',{headers,redirect:'manual',signal:AbortSignal.timeout(10000)});if(r.ok){const d=await r.json();if(d.data?.b_3)cookies.push(`buvid3=${d.data.b_3}`);if(d.data?.b_4)cookies.push(`buvid4=${d.data.b_4}`)}}
+      if(!cookies.some(c=>c.startsWith('b_nut=')))cookies.push(`b_nut=${Math.floor(Date.now()/1000)}`);
+      return json({code:0,data:{cookie:cleanCookie(cookies.join('; '))}});
+    }catch{return json({code:-502,message:'游客会话初始化失败，请稍后重试'},502)}
+  }
   const route=ROUTES[body.route];
   if(!route)return json({code:-404,message:'接口不存在'},404);
   const target=new URL(`https://${route[0]}${route[1]}`);
@@ -37,8 +50,7 @@ async function relay(request){
     if(!/^[a-zA-Z0-9_]{1,40}$/.test(key)||!['string','number','boolean'].includes(typeof value)||String(value).length>2500)return json({code:-400,message:'参数无效'},400);
     target.searchParams.set(key,String(value));
   }
-  const headers={'User-Agent':UA,'Referer':'https://www.bilibili.com/','Accept':'application/json'};
-  const cookie=cleanCookie(body.cookie);if(cookie&&!body.route.startsWith('qr'))headers.Cookie=cookie;
+  let cookie=cleanCookie(body.cookie);if(body.route.startsWith('qr'))cookie=cookie.split('; ').filter(c=>DEVICE_NAMES.has(c.split('=')[0])).join('; ');if(cookie)headers.Cookie=cookie;
   try{
     const response=await fetch(target,{headers,redirect:'manual',signal:AbortSignal.timeout(18000)});
     if(!response.ok)return json({code:response.status===412?-412:-502,message:response.status===412?'B 站暂时限制了此网络的请求，请稍后重试':'B 站接口暂时不可用'},502);

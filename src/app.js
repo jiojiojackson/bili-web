@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import {api,signed,normalize,count,duration,https,session,setSession} from './api.js';
+import {api,signed,normalize,count,duration,https,session,setSession,bootstrapDevice} from './api.js';
 import {loadSession,saveSession,clearSession} from './vault.js';
 
 const $=s=>document.querySelector(s);
@@ -136,5 +136,5 @@ document.addEventListener('touchend',releasePull,{passive:true});document.addEve
 const observer=new IntersectionObserver(entries=>{if(entries[0].isIntersecting&&!loading&&items.length&&hasMore)load()},{rootMargin:'250px'});observer.observe($('#feed-end'));
 window.addEventListener('offline',()=>notice('网络已断开，已加载的推荐仍可浏览。'));window.addEventListener('online',()=>{notice('');if(!items.length)load(true)});
 
-async function init(){skeleton();setSession(await loadSession());if(session)await updateUser();const cached=read(cacheKey(),null);if(cached?.items?.length){items=cached.items.map(remember);render();notice('正在更新推荐…')}await load(true);const bvid=new URL(location.href).searchParams.get('v');if(/^BV[a-zA-Z0-9]+$/.test(bvid||'')){try{const v=normalize(await api('view',{bvid}));if(v)openVideo(v)}catch(e){toast(e.message)}}if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+async function init(){skeleton();await bootstrapDevice();setSession(await loadSession());if(session)await updateUser();const cached=read(cacheKey(),null);if(cached?.items?.length){items=cached.items.map(remember);render();notice('正在更新推荐…')}await load(true);const bvid=new URL(location.href).searchParams.get('v');if(/^BV[a-zA-Z0-9]+$/.test(bvid||'')){try{const v=normalize(await api('view',{bvid}));if(v)openVideo(v)}catch(e){toast(e.message)}}if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{})}
 init();
