@@ -1,56 +1,54 @@
-# Bili Web
+# Bili Web · 本地轻装版
 
-适合手机浏览器的非官方哔哩哔哩客户端，部署于自己的 Cloudflare Workers。白色搜索栏、首张大卡、双列推荐和固定底栏，按提供的手机截图布局。
+适配 iPhone Safari 的非官方 B 站界面：顶部搜索、首张大卡、双列推荐、底部导航、下拉刷新、搜索、网页播放和关注动态。Cloudflare **仅分发静态文件**，所有 B 站 API 与视频请求都由用户设备直接发出。
 
-## 功能
+## iPhone Safari 安装
 
-- B 站 App 扫码登录、登录状态本机缓存、退出清除凭据。
-- 推荐信息流、顶部下拉刷新、刷新按钮、滚动加载和推荐缓存。
-- 视频搜索、动画分类、关注 UP 主的视频动态。
-- 网页播放器、分 P、相关推荐、分享、本机浏览记录和稍后再看。
-- 安装到主屏幕；离线时保留网页外壳和已缓存的推荐。
+1. 从 App Store 安装 [Userscripts](https://apps.apple.com/app/userscripts/id1463298887)，打开一次，并在 iPhone 的 Safari 扩展设置中启用它。
+2. Safari 打开 [安装页面](https://bili-web.jiojiojackson.workers.dev/)，点击「安装本地脚本」，在 Safari 扩展菜单中打开 Userscripts 并确认安装。也可把 `.user.js` 保存到 Userscripts 脚本目录。
+3. 打开 [B 站](https://www.bilibili.com/?bili_lite=on)，允许 Userscripts 访问 B 站。安装时可能还需要临时允许访问本静态分发站。不需要给予所有网站访问权限。
+4. 需要登录时，点击头像进入 B 站官方登录，返回后刷新状态。脚本不接管登录页面。
 
-消息入口打开官方消息中心。本机「稍后再看」不与 B 站同步。本项目不提供会员、付费、版权或地域限制绕过，不包含第三方广告或统计脚本。
+安装方法依据 [Userscripts 官方文档](https://github.com/quoid/userscripts#usage)。本项目匹配 `www.bilibili.com` 与 `m.bilibili.com`，仅在首页和 BV 视频页启用；其他官方功能和登录页面保留原样。脚本使用 `GM.xmlHttpRequest` 作为 Safari 跨域限制下的本地扩展请求后备，并限定 API 目标域名。
 
-## 隐私和架构
+## 工作方式
 
-界面、账号、浏览记录、推荐缓存和 WBI 签名在浏览器中处理。账号 Cookie 使用浏览器 Web Crypto AES-GCM 加密，密文与不可导出密钥保存在 IndexedDB；不写入 localStorage。加密不能抵御同源恶意脚本或设备已被控制的情况，请仅使用可信部署。
+```text
+Cloudflare → 用户设备：安装文件、JavaScript、CSS、更新
+用户设备 ↔ B 站：官方登录、推荐、搜索、动态、视频
+```
 
-B 站 API 不允许第三方网页直接携带其 Cookie，浏览器也不能读取 B 站域的 HttpOnly Cookie。因此接口需要本站 Worker 转发。Worker 是无状态的，只调用明确列出的只读 B 站 API，只转发白名单 Cookie，账号请求不缓存，不使用 KV、D1、R2，不记录请求日志。凭据仍会在请求期间经过 Cloudflare，随后转发给 B 站；这并非端到端隐藏于托管方的方案。
+浏览器原生 `fetch(credentials: include)` 优先使用官方登录状态，不读取 `document.cookie`，不复制或另行缓存账号 Cookie。跨域请求后备由设备上的 Userscripts 扩展执行，依然直接访问 `api.bilibili.com`。没有公共代理、后端账号中转、数据库或视频转发接口。
 
-封面和视频优先直连 B 站 CDN，视频直连失败才使用限制域名的流式转发。视频 Range 请求原样支持，凭据不发往视频 CDN。静态资源可缓存，账号/API 响应始终 `no-store`。Service Worker 只缓存明确列出的本站静态文件。
+全部界面代码、样式和 MD5 签名依赖打包到 `bili-local.user.js` 中。安装后运行界面不需要再次从 Cloudflare 加载代码。元数据更新检查仅下载静态文件。代码使用未压缩构建便于审阅。
 
-## 开发
+推荐缓存、浏览记录、本机稍后再看保存在 B 站域名下的 localStorage。稍后再看不与 B 站账号同步。官方账号登录缓存由 Safari 和 B 站管理，脚本无法延长登录有效期。
 
-需要 Node.js 22 或更新版本。
+Cloudflare 已移除动态 Worker；`wrangler.jsonc` 只有静态资产配置。旧的 `/api/bili` 和 `/media` 不再提供服务，静态分发页会清除旧版 Service Worker 和本项目旧版凭据数据库。
+
+## 恢复官方界面
+
+点击「我的 → 返回官方界面」，或访问 `https://www.bilibili.com/?bili_lite=off`，也可以在扩展中停用脚本。脚本不会自动点赞、关注、修改账号设置或退出官方账号。
+
+## 构建与部署
+
+Node.js 22 或以上版本：
 
 ```sh
 npm ci
 npm run build
-npm run dev
 npm test
+npm run dev
 ```
 
-预览地址：`http://localhost:8787`。真实接口需要联网。
+Cloudflare Workers 连接本仓库的 `main` 分支；Build command 为 `npm run build`，Deploy command 为 `npx wrangler deploy`，Root directory 为 `/`。无需任何账号环境变量、KV、D1 或 R2。
 
-## Cloudflare 部署
+构建生成安装页、`bili-local.user.js`、更新元数据、CSS 和供手动书签启动的 `bili-local.js`。书签入口依赖浏览器和网站 CSP；iPhone Safari 使用 Userscripts 为主要安装路径。
 
-在 Cloudflare 控制台新建 Worker，选择此 GitHub 仓库，生产分支 `main`：
+## 验证与限制
 
-- Build command: `npm run build`
-- Deploy command: `npx wrangler deploy`
-- Root directory: `/`
+自动检查验证固定的 B 站 API 域名、本地运行来源限制、原生浏览器凭据处理、无后端部署配置和安装文件不包含旧账号中转代码。完整的 iPhone Safari 扩展、登录与触摸手势仍需在实际手机上验证。
 
-或者本地执行 `npm run deploy`。项目不需要账号密钥、数据库或存储绑定。`wrangler.jsonc` 已关闭 Worker 可观测性日志。不要在项目、GitHub 或 Cloudflare 环境变量中保存 B 站 Cookie。
+本地请求可以避开 Cloudflare 出口 IP 造成的限制，但本地网络、账号、请求频率和 B 站自身的接口变更仍可能触发风控，不能保证永不封控。推荐结果由 B 站生成，刷新可能有重复。网页播放使用官方返回的 MP4 地址，部分视频只能在官方播放器观看；不绕过会员、付费或地域限制。
 
-## 登录
-
-点击左上角头像，使用 B 站 App 扫码并确认。同一手机可以截取二维码，再用 B 站扫一扫从相册识别。也提供高级 Cookie 导入；Cookie 相当于账号访问凭据，勿分享。
-
-扫码流程与未登录推荐可以独立验证；完整登录必须由账号持有人确认。B 站登录有效期由官方决定，失效后重新扫码；本项目不保存或使用刷新令牌。退出清除账号、密钥和个性化推荐缓存；浏览记录和稍后再看可在「我的」中单独清除。
-
-## 限制
-
-B 站未为本项目提供稳定的公开 API 合约，可能修改接口、要求验证或限制 Cloudflare 出口 IP。推荐失败会尝试普通推荐与热门接口，并清楚标注降级状态；全部失败时显示重试，不使用假数据。推荐数据由 B 站生成，刷新可能仍返回部分重复视频。
-
-网页播放使用官方返回的渐进式播放地址；接口可能只提供较低清晰度，或拒绝某些视频。无法直播放时提供官方观看入口。Cloudflare 免费额度与 B 站网络可用性也影响访问。
+用户脚本和扩展可以修改获准网站的页面，安装前应审阅并信任代码。Cloudflare 与 GitHub 上的发布权限也意味着能分发未来的脚本更新。

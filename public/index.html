@@ -1,44 +1,18 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ffffff">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="referrer" content="no-referrer">
-  <meta name="description" content="轻轻松松刷 B 站。下拉换一批推荐，账号留在本机，无广告弹窗的手机浏览体验。非哔哩哔哩官方产品。">
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/style.css">
-  <title>Bili Web · 轻松刷视频</title>
-</head>
-<body>
-  <div id="app">
-    <header class="header">
-      <div class="search-row">
-        <button class="avatar-button" id="avatar" aria-label="登录与我的账号"><span class="guest-avatar" aria-hidden="true">哔</span></button>
-        <form id="search-form" role="search"><span id="search-icon"></span><input id="search" type="search" placeholder="搜索视频、番剧或 UP 主" aria-label="搜索视频" enterkeyhint="search" autocomplete="off"><button id="search-clear" type="button" aria-label="清除搜索" hidden>×</button></form>
-      </div>
-      <div class="tabs" role="tablist" aria-label="视频分类"><button class="tab active" role="tab" aria-selected="true" data-tab="recommend">推荐</button><button class="tab" role="tab" aria-selected="false" data-tab="anime">番剧</button><button class="refresh-button" id="refresh" aria-label="刷新推荐"></button></div>
-    </header>
-    <main id="main">
-      <div class="pull-indicator" id="pull" aria-live="polite"><span class="pull-icon">↓</span><span id="pull-label">下拉换一批</span></div>
-      <div class="feed-heading" id="feed-heading" hidden></div>
-      <div id="notice" class="notice" hidden></div>
-      <section class="feed" id="feed" aria-label="推荐视频" aria-busy="true"></section>
-      <div class="feed-end" id="feed-end"><button id="load-more">加载更多</button><span id="load-label"></span></div>
-    </main>
-    <nav class="bottom-nav" aria-label="主导航">
-      <button class="nav-item active" data-nav="home"><span class="nav-icon" data-icon="home"></span><span>首页</span></button>
-      <button class="nav-item" data-nav="following"><span class="nav-icon" data-icon="follow"></span><span>关注</span></button>
-      <button class="nav-item" data-nav="messages"><span class="nav-icon" data-icon="message"></span><span>消息</span></button>
-      <button class="nav-item" data-nav="profile"><span class="nav-icon" data-icon="tv"></span><span>我的</span></button>
-    </nav>
-  </div>
-  <dialog id="sheet" class="sheet"><div class="sheet-handle"></div><button class="sheet-close" aria-label="关闭">×</button><div id="sheet-content"></div></dialog>
-  <dialog id="player" class="player-dialog"><div class="player-shell"><div class="player-top"><button id="player-close" aria-label="关闭播放器"></button><span>正在播放</span><a id="official-video" target="_blank" rel="noopener noreferrer">B 站打开 ↗</a></div><div class="video-wrap"><video id="video" controls playsinline preload="metadata"></video><div id="play-status" role="status"></div></div><div class="player-info" id="player-info"></div><div id="parts" class="parts"></div><div class="player-actions"><button id="save-video"></button><button id="share-video"></button></div><div class="related-title">接着看</div><div class="feed related" id="related"></div></div></dialog>
-  <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/app.js"></script>
-</body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#ffffff"><meta name="description" content="Bili Web 本地轻装版。Cloudflare 只下发静态文件，在你的 Safari 中直接浏览 B 站。"><title>Bili Web · 本地轻装版</title><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/install.css"></head>
+<body><main>
+<header><a class="brand" href="/"><img src="/icon.svg" alt="" width="32" height="32">Bili Web<span>本地轻装版</span></a><a class="source" href="https://github.com/jiojiojackson/bili-web" target="_blank" rel="noopener noreferrer">源码 ↗</a></header>
+<section class="intro"><span class="eyebrow">为 iPhone Safari 准备</span><h1>熟悉的推荐，<br>轻一点的浏览。</h1><p>双列视频、下拉换一批，没有下载 App 弹窗。<br>脚本在你的手机运行，直接访问 B 站。</p><a class="primary" href="/bili-local.user.js">安装本地脚本 <span>↓</span></a><a class="open-bili" href="https://www.bilibili.com/?bili_lite=on">已安装？打开 B 站 ↗</a></section>
+<div class="path" aria-label="请求路径"><div><span>你的 Safari</span><small>界面 · 登录 · 缓存</small></div><b>⇄</b><div><span>哔哩哔哩</span><small>推荐 · 搜索 · 视频</small></div></div><p class="hosting-note">本站只提供脚本、样式和安装说明，不转发 B 站请求。</p>
+<section class="setup"><h2>在 Safari 开始使用</h2><ol>
+<li><span class="step">1</span><div><h3>启用 Userscripts</h3><p>从 App Store 安装 <a href="https://apps.apple.com/app/userscripts/id1463298887" target="_blank" rel="noopener noreferrer">Userscripts ↗</a>，打开一次。到 iPhone「设置 → App → Safari → 扩展」启用它。旧版 iOS 的入口在「设置 → Safari」。</p></div></li>
+<li><span class="step">2</span><div><h3>安装这份脚本</h3><p>点上方「安装本地脚本」，再打开 Safari 的扩展菜单，选择 Userscripts 并确认安装。脚本文件也可以保存到 Userscripts 的脚本目录。</p><a class="file-link" href="/bili-local.user.js">bili-local.user.js <span>2.0.0 · JS 和样式已打包</span></a></div></li>
+<li><span class="step">3</span><div><h3>打开 B 站，允许脚本运行</h3><p>访问 <a href="https://www.bilibili.com/?bili_lite=on">bilibili.com</a>，在 Safari 扩展菜单允许 Userscripts 访问 B 站。需要登录时使用 B 站官方登录；登录状态由 Safari 保留。</p></div></li>
+</ol></section>
+<section class="privacy"><div class="shield">✓</div><div><h2>账号始终由 B 站管理</h2><p>不读取、导入或上传账号 Cookie。所有 B 站请求从你的设备发出，Cloudflare 只分发静态文件。推荐缓存、浏览记录和稍后再看留在本机。</p><p>脚本只在 www.bilibili.com 和 m.bilibili.com 的首页、视频页运行。用户脚本能修改页面，请仅安装你信任的代码。无需给予所有网站权限。</p></div></section>
+<details><summary>为什么不能直接在这个网页刷视频？</summary><p>普通独立网页受浏览器跨域和 Cookie 隔离限制，无法直接沿用 B 站登录。用户脚本让界面运行在 B 站页面中，浏览器才可以直接使用官方登录状态。纯前端分发可避免 Cloudflare 出口 IP 限制，本地网络或账号仍可能受 B 站风控影响。</p></details>
+<details><summary>如何恢复官方界面？</summary><p>点「我的 → 返回官方界面」，或在 Userscripts 中停用此脚本。脚本不改变 B 站账号设置，不自动点赞或关注。</p><a href="https://www.bilibili.com/?bili_lite=off">打开官方界面 ↗</a></details>
+<details><summary>桌面浏览器与手动启动</summary><p>支持 Tampermonkey 的浏览器也可以安装同一份脚本。下面的书签入口供支持书签脚本的浏览器使用；网站的内容安全策略可能阻止它，Safari 推荐使用上方 Userscripts 方式。</p><a id="bookmarklet" href="#">Bili 轻装书签</a><button id="copy-bookmarklet">复制书签代码</button></details>
+<footer><span>Bili Web · 非哔哩哔哩官方产品</span><a href="https://github.com/quoid/userscripts#usage" target="_blank" rel="noopener noreferrer">Userscripts 安装文档 ↗</a></footer>
+</main><script src="/install.js" defer></script></body></html>
