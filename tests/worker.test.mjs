@@ -24,3 +24,20 @@ test('unknown API targets cannot turn the Worker into an arbitrary authenticated
 test('media denies non-Bilibili URLs before fetch',async()=>{
   const r=await worker.fetch(new Request('https://bili.example/media?url=https://evil.example'),{});assert.equal(r.status,400);
 });
+test('QR login returns only approved cookies and never the callback URL or refresh token',async t=>{
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    assert.equal(new URL(url).hostname,'passport.bilibili.com');
+    assert.equal(options.headers.Cookie,undefined);
+    return Response.json({code:0,data:{code:0,url:'https://passport.bilibili.com/callback?SESSDATA=approved&DedeUserID=42&unexpected=secret',refresh_token:'do-not-persist'}},{headers:{'Set-Cookie':'bili_jct=csrf; HttpOnly; Secure'}});
+  });
+  const request=new Request('https://bili.example/api/bili',{method:'POST',headers:{Origin:'https://bili.example','Content-Type':'application/json'},body:JSON.stringify({route:'qrPoll',params:{qrcode_key:'test-key'},cookie:'SESSDATA=unrelated'})});
+  const response=await worker.fetch(request,{});const result=await response.json();
+  assert.equal(result.data.url,undefined);assert.equal(result.data.refresh_token,undefined);
+  assert.match(result.data.session,/SESSDATA=approved/);assert.match(result.data.session,/bili_jct=csrf/);assert.doesNotMatch(result.data.session,/unexpected|unrelated/);
+  assert.match(response.headers.get('Cache-Control'),/no-store/);
+});
+test('malformed JSON shapes are rejected without contacting upstream',async()=>{
+  for(const body of ['null','[]','{"route":"nav","params":null}']){
+    const r=await worker.fetch(new Request('https://bili.example/api/bili',{method:'POST',headers:{Origin:'https://bili.example','Content-Type':'application/json'},body}),{});assert.equal(r.status,400);
+  }
+});

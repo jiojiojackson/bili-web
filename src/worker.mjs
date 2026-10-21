@@ -25,9 +25,11 @@ async function relay(request){
   const origin=new URL(request.url).origin;
   if(request.headers.get('Origin')!==origin)return json({code:-403,message:'仅允许本站请求'},403);
   if(request.method!=='POST'||!request.headers.get('Content-Type')?.startsWith('application/json'))return json({code:-405,message:'请使用 JSON POST'},405);
+  if(Number(request.headers.get('Content-Length'))>16384)return json({code:-413,message:'请求过大'},413);
   const raw=await request.text();
   if(raw.length>16384)return json({code:-413,message:'请求过大'},413);
   let body;try{body=JSON.parse(raw)}catch{return json({code:-400,message:'无效请求'},400)}
+  if(!body||typeof body!=='object'||Array.isArray(body)||body.params!==undefined&&(!body.params||typeof body.params!=='object'||Array.isArray(body.params)))return json({code:-400,message:'无效请求'},400);
   const route=ROUTES[body.route];
   if(!route)return json({code:-404,message:'接口不存在'},404);
   const target=new URL(`https://${route[0]}${route[1]}`);
