@@ -1,5 +1,5 @@
 // Stateless, read-only Bilibili relay. No KV, database, cookies, or request logging.
-const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const UA='bili-web/1.0';
 const ROUTES={
   nav:['api.bilibili.com','/x/web-interface/nav'],
   feed:['api.bilibili.com','/x/web-interface/wbi/index/top/feed/rcmd'],
@@ -7,6 +7,7 @@ const ROUTES={
   popular:['api.bilibili.com','/x/web-interface/popular'],
   search:['api.bilibili.com','/x/web-interface/search/type'],
   view:['api.bilibili.com','/x/web-interface/view'],
+  viewSigned:['api.bilibili.com','/x/web-interface/wbi/view'],
   play:['api.bilibili.com','/x/player/playurl'],
   related:['api.bilibili.com','/x/web-interface/archive/related'],
   following:['api.bilibili.com','/x/polymer/web-dynamic/v1/feed/all'],
