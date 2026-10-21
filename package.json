@@ -1,0 +1,14 @@
+{
+  "name": "bili-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": { "js-md5": "^0.8.3", "qrcode": "^1.5.4" },
+  "devDependencies": { "esbuild": "^0.25.0", "wrangler": "^4.0.0" }
+}
