@@ -1,4 +1,5 @@
 import {api,signed,normalize,count,duration,https,session,setSession} from './api.js';
+import {DEFAULT_QUALITY, qualityLabel, playbackParams, selectMp4} from './quality.js';
 
 const $=s=>document.querySelector(s);
 const icons={
@@ -26,6 +27,8 @@ function read(key,fallback){try{return JSON.parse(localStorage.getItem(`bili:${k
 function write(key,value){try{localStorage.setItem(`bili:${key}`,JSON.stringify(value))}catch{}}
 let user=null,tab='recommend',nav='home',query='',page=1,fresh=Date.now()%10000,items=[],loading=false,hasMore=true,offset='',version=0;
 let toastTimer,currentVideo,playVersion=0,mediaFallback=false,mediaSource='',activePart=0;
+let preferredQuality=Number(read('preferred-quality',DEFAULT_QUALITY))||DEFAULT_QUALITY;
+let currentQuality=0, availableQualities=[];
 let history=read('history',[]),saved=read('saved',[]),hidden=new Set(read('hidden',[]));
 const records=new Map();
 
@@ -90,18 +93,72 @@ function showList(title,list,key){showSheet(`<h2>${title}</h2><p>仅保存在当
 function showMore(v){showSheet(`<h2>${esc(v.title)}</h2><p>${esc(v.owner.name)}</p><button class="menu-row" id="more-save">${icon('heart')}${saved.some(s=>s.bvid===v.bvid)?'移出稍后再看':'加入稍后再看'}<span class="row-caption">仅本机</span></button><button class="menu-row" id="more-hide">${icon('trash')}减少这类推荐<span class="row-caption">隐藏此视频</span></button><a class="menu-row" href="https://www.bilibili.com/video/${v.bvid}?bili_lite=off" target="_blank" rel="noopener noreferrer">${icon('share')}在 B 站打开 ↗</a>`);$('#more-save').onclick=()=>{toggleSave(v);closeSheet()};$('#more-hide').onclick=()=>{hidden.add(v.bvid);write('hidden',[...hidden].slice(-300));items=items.filter(x=>x.bvid!==v.bvid);render();closeSheet();toast('已隐藏此视频')}}
 function toggleSave(v){const exists=saved.some(x=>x.bvid===v.bvid);saved=exists?saved.filter(x=>x.bvid!==v.bvid):[v,...saved].slice(0,200);write('saved',saved);updateSave();toast(exists?'已移出稍后再看':'已加入稍后再看 · 仅本机')}
 function updateSave(){if(!currentVideo)return;const exists=saved.some(x=>x.bvid===currentVideo.bvid);$('#save-video').innerHTML=`${icon('heart')}${exists?'已加入稍后再看':'稍后再看'}`;$('#save-video').classList.toggle('saved-label',exists)}
+function renderQualityControl(qualities=[],actual=0){
+  const select=$('#video-quality');
+  availableQualities=[...new Set([...qualities,actual].map(Number).filter(Boolean))].sort((a,b)=>b-a);
+  select.replaceChildren();
+  if(!availableQualities.length){
+    select.add(new Option('暂无画质信息',''));
+    select.disabled=true;
+  }else{
+    for(const q of availableQualities)select.add(new Option(qualityLabel(q),String(q)));
+    select.value=String(actual);
+    select.disabled=availableQualities.length<2;
+  }
+  $('#quality-note').textContent=availableQualities.length<2?'当前视频仅返回一种可选画质':'可用档位由 B 站提供，部分档位可能不支持 MP4';
+}
 function playbackError(message){$('#play-status').innerHTML=`<span>${esc(message)}</span><button class="secondary" id="retry-play">重新播放</button><a class="secondary" href="https://www.bilibili.com/video/${currentVideo.bvid}?bili_lite=off" target="_blank" rel="noopener noreferrer">在 B 站打开 ↗</a>`;$('#retry-play').onclick=()=>playPart(activePart)}
 async function openVideo(v){
-  if(!v)return;closeSheet();currentVideo=v;mediaSource='';mediaFallback=false;const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
+  if(!v)return;closeSheet();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
   history=[{...v,watched:Date.now()},...history.filter(h=>h.bvid!==v.bvid)].slice(0,100);write('history',history);
   api('related',{bvid:v.bvid}).then(list=>{if(currentVideo?.bvid!==v.bvid||!$('#player').open)return;$('#related').innerHTML=(list||[]).slice(0,12).map(normalize).filter(Boolean).map(x=>card(x)).join('')}).catch(()=>{});
   try{let detail;try{detail=await api('view',{bvid:v.bvid})}catch{try{detail=await api('viewSigned',await signed({bvid:v.bvid}))}catch(e){if(v.cid){if(id===playVersion)await playPart(0);return}throw e}}if(id!==playVersion)return;currentVideo={...normalize(detail),pages:detail.pages,rights:detail.rights};remember(currentVideo);$('#player-info').innerHTML=`<h1>${esc(detail.title)}</h1><p>${esc(detail.owner.name)} · ${count(detail.stat.view)} 次观看 · ${count(detail.stat.danmaku)} 条弹幕</p><p class="description">${esc(detail.desc)}</p>`;if(detail.pages.length>1){$('#parts').innerHTML=detail.pages.map((p,i)=>`<button data-part="${i}">P${i+1} ${esc(p.part)}</button>`).join('');$('#parts').querySelectorAll('button').forEach(b=>b.onclick=()=>playPart(Number(b.dataset.part)))}await playPart(0)}catch(e){if(id===playVersion)playbackError(e.message)}
 }
-async function playPart(index){
-  activePart=index;const id=++playVersion;const v=currentVideo;$('#video').pause();$('#play-status').textContent='正在获取播放地址…';$('#parts').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('selected',i===index));
-  try{const d=await api('play',{bvid:v.bvid,cid:v.pages?.[index]?.cid||v.cid,qn:32,fnval:1,fnver:0,fourk:0,platform:'html5',high_quality:1});if(id!==playVersion)return;const source=d.durl?.[0]?.url;if(!source)throw new Error('此视频暂不支持网页直接播放，请在 B 站观看');if(d.durl.length>1)throw new Error('此视频采用分段播放，请在 B 站观看完整视频');mediaSource=https(source);mediaFallback=false;$('#video').src=mediaSource;$('#video').poster=v.pic;$('#play-status').textContent='';$('#video').play().catch(()=>{})}catch(e){if(id===playVersion)playbackError(e.message)}
+async function playPart(index,quality=preferredQuality,switching=false){
+  const id=++playVersion,v=currentVideo,video=$('#video'),selector=$('#video-quality');
+  const restoreTime=switching&&index===activePart?video.currentTime:0;
+  const resume=!switching||!video.paused;
+  selector.disabled=true;
+  if(!switching){
+    activePart=index;video.pause();currentQuality=0;renderQualityControl();
+    $('#play-status').textContent='正在获取播放地址…';
+    $('#parts').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('selected',i===index));
+  }else{
+    $('#quality-note').textContent='正在切换画质…';
+  }
+  try{
+    const d=await api('play',playbackParams(v,v.pages?.[index]?.cid||v.cid,quality));
+    if(id!==playVersion)return;
+    const result=selectMp4(d,quality,switching);
+    mediaSource=https(result.url);mediaFallback=false;
+    currentQuality=result.actualQuality;
+    renderQualityControl(result.qualities,currentQuality);
+    video.poster=v.pic;
+    if(switching){
+      video.addEventListener('loadedmetadata',()=>{
+        if(id!==playVersion)return;
+        if(restoreTime>0&&Number.isFinite(video.duration)){
+          try{video.currentTime=Math.min(restoreTime,Math.max(0,video.duration-0.1))}catch{}
+        }
+        if(resume)video.play().catch(()=>{});
+      },{once:true});
+      preferredQuality=quality;
+      write('preferred-quality',quality);
+    }
+    video.src=mediaSource;
+    if(!switching)video.play().catch(()=>{});
+    $('#play-status').textContent='';
+  }catch(e){
+    if(id!==playVersion)return;
+    if(switching){
+      selector.value=String(currentQuality);
+      selector.disabled=availableQualities.length<2;
+      $('#quality-note').textContent='无法切换：'+e.message;
+      toast(e.message);
+    }else playbackError(e.message);
+  }
 }
-function closePlayer(){++playVersion;mediaSource='';$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').close();const u=new URL(location.href);u.searchParams.delete('v');historyReplace(u)}
+function closePlayer(){++playVersion;currentQuality=0;renderQualityControl();mediaSource='';$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').close();const u=new URL(location.href);u.searchParams.delete('v');historyReplace(u)}
 function historyReplace(u){window.history.replaceState(null,'',u.pathname+u.search)}
 function setNav(value){document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===value))}
 
@@ -113,6 +170,7 @@ document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{const value=b.
 document.addEventListener('click',e=>{const video=e.target.closest('[data-video]');if(video)return openVideo(records.get(video.dataset.video));const more=e.target.closest('[data-more]');if(more)showMore(records.get(more.dataset.more))});
 $('#sheet .sheet-close').onclick=closeSheet;$('#sheet').onclick=e=>{if(e.target===$('#sheet')){const r=$('#sheet').getBoundingClientRect();if(e.clientY<r.top)closeSheet()}};
 $('#player-close').onclick=closePlayer;$('#player').addEventListener('cancel',e=>{e.preventDefault();closePlayer()});$('#video').onerror=()=>{if(!$('#player').open||!mediaSource)return;playbackError('播放连接失败，可能是 B 站网络限制。')};
+$('#video-quality').onchange=()=>{const q=Number($('#video-quality').value);if(q&&currentVideo&&q!==currentQuality)playPart(activePart,q,true)};
 $('#save-video').onclick=()=>currentVideo&&toggleSave(currentVideo);$('#share-video').onclick=async()=>{if(!currentVideo)return;const u=new URL('https://www.bilibili.com/video/'+currentVideo.bvid);u.searchParams.set('bili_lite','on');try{if(navigator.share)await navigator.share({title:currentVideo.title,url:u.href});else{await navigator.clipboard.writeText(u.href);toast('视频链接已复制')}}catch{}};
 
 // Pull-to-refresh only captures a downward gesture starting at the top.
