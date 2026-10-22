@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {endpoint,assertLocalOrigin,request} from '../src/transport.js';
 test('all supported requests go directly to a fixed Bilibili API host',()=>{
-  for(const route of ['nav','feed','feedLegacy','popular','search','view','viewSigned','play','playDash','related','following']){
+  for(const route of ['nav','feed','feedLegacy','popular','search','view','viewSigned','play','playDash','comments','commentReplies','related','following']){
     const u=new URL(endpoint(route,{keyword:'鱼 & 面',page:2}));
     assert.equal(u.origin,'https://api.bilibili.com');assert.equal(u.searchParams.get('keyword'),'鱼 & 面');
   }

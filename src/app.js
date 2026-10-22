@@ -1,6 +1,7 @@
 import {api,signed,normalize,count,duration,https,session,setSession} from './api.js';
 import {DEFAULT_QUALITY, qualityLabel, playbackParams, selectMp4} from './quality.js';
 import {dashQualities, manifestForQuality} from './dash.js';
+import {createCommentPanel} from './comment-view.js';
 
 const $=s=>document.querySelector(s);
 const icons={
@@ -126,12 +127,13 @@ async function probeDash(v,cid,id){
       $('#quality-note').textContent='高清 DASH 信息获取失败：'+e.message;
   }
 }
+const comments=createCommentPanel({root:$('#comments-panel'),api,signed,esc,count});
 function playbackError(message){$('#play-status').innerHTML=`<span>${esc(message)}</span><button class="secondary" id="retry-play">重新播放</button><a class="secondary" href="https://www.bilibili.com/video/${currentVideo.bvid}?bili_lite=off" target="_blank" rel="noopener noreferrer">在 B 站打开 ↗</a>`;$('#retry-play').onclick=()=>playPart(activePart)}
 async function openVideo(v){
-  if(!v)return;closeSheet();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;dashResponse=null;dashCid=null;mp4Qualities=[];void destroyDash();renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
+  if(!v)return;closeSheet();comments.close();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;dashResponse=null;dashCid=null;mp4Qualities=[];void destroyDash();renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;if(v.aid)comments.open(v.aid);$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
   history=[{...v,watched:Date.now()},...history.filter(h=>h.bvid!==v.bvid)].slice(0,100);write('history',history);
   api('related',{bvid:v.bvid}).then(list=>{if(currentVideo?.bvid!==v.bvid||!$('#player').open)return;$('#related').innerHTML=(list||[]).slice(0,12).map(normalize).filter(Boolean).map(x=>card(x)).join('')}).catch(()=>{});
-  try{let detail;try{detail=await api('view',{bvid:v.bvid})}catch{try{detail=await api('viewSigned',await signed({bvid:v.bvid}))}catch(e){if(v.cid){if(id===playVersion)await playPart(0);return}throw e}}if(id!==playVersion)return;currentVideo={...normalize(detail),pages:detail.pages,rights:detail.rights};remember(currentVideo);$('#player-info').innerHTML=`<h1>${esc(detail.title)}</h1><p>${esc(detail.owner.name)} · ${count(detail.stat.view)} 次观看 · ${count(detail.stat.danmaku)} 条弹幕</p><p class="description">${esc(detail.desc)}</p>`;if(detail.pages.length>1){$('#parts').innerHTML=detail.pages.map((p,i)=>`<button data-part="${i}">P${i+1} ${esc(p.part)}</button>`).join('');$('#parts').querySelectorAll('button').forEach(b=>b.onclick=()=>playPart(Number(b.dataset.part)))}await playPart(0)}catch(e){if(id===playVersion)playbackError(e.message)}
+  try{let detail;try{detail=await api('view',{bvid:v.bvid})}catch{try{detail=await api('viewSigned',await signed({bvid:v.bvid}))}catch(e){if(v.cid){if(id===playVersion)await playPart(0);return}throw e}}if(id!==playVersion)return;currentVideo={...normalize(detail),pages:detail.pages,rights:detail.rights};comments.open(currentVideo.aid||v.aid);remember(currentVideo);$('#player-info').innerHTML=`<h1>${esc(detail.title)}</h1><p>${esc(detail.owner.name)} · ${count(detail.stat.view)} 次观看 · ${count(detail.stat.danmaku)} 条弹幕</p><p class="description">${esc(detail.desc)}</p>`;if(detail.pages.length>1){$('#parts').innerHTML=detail.pages.map((p,i)=>`<button data-part="${i}">P${i+1} ${esc(p.part)}</button>`).join('');$('#parts').querySelectorAll('button').forEach(b=>b.onclick=()=>playPart(Number(b.dataset.part)))}await playPart(0)}catch(e){if(id===playVersion)playbackError(e.message)}
 }
 async function playPart(index,quality=preferredQuality,switching=false){
   const id=++playVersion,v=currentVideo,video=$('#video'),selector=$('#video-quality');
@@ -239,7 +241,7 @@ async function playPart(index,quality=preferredQuality,switching=false){
     }else playbackError(e.message);
   }
 }
-function closePlayer(){++playVersion;void destroyDash();dashResponse=null;dashCid=null;mp4Qualities=[];currentQuality=0;renderQualityControl();mediaSource='';$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').close();const u=new URL(location.href);u.searchParams.delete('v');historyReplace(u)}
+function closePlayer(){comments.close();++playVersion;void destroyDash();dashResponse=null;dashCid=null;mp4Qualities=[];currentQuality=0;renderQualityControl();mediaSource='';$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').close();const u=new URL(location.href);u.searchParams.delete('v');historyReplace(u)}
 function historyReplace(u){window.history.replaceState(null,'',u.pathname+u.search)}
 function setNav(value){document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===value))}
 

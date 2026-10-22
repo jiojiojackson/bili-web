@@ -1,8 +1,12 @@
 name: Verify Bili Web
 on:
   push:
-    branches: [main, 'fix/safari-dash-1080p']
+    branches: [main]
   pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
