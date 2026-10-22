@@ -127,12 +127,26 @@ async function playPart(index,quality=preferredQuality,switching=false){
     $('#quality-note').textContent='正在切换画质…';
   }
   try{
-    const d=await api('play',playbackParams(v,v.pages?.[index]?.cid||v.cid,quality));
+    const cid=v.pages?.[index]?.cid||v.cid;
+    let result,usedFallback=false;
+    try {
+      const d=await api('play',playbackParams(v,cid,quality));
+      if(id!==playVersion)return;
+      result=selectMp4(d,quality,switching);
+    }catch(error){
+      // A higher-resolution rendition can be DASH-only. Keep the original
+      // 480P MP4 behaviour working instead of failing the whole video.
+      if(switching||quality<=32)throw error;
+      const d=await api('play',playbackParams(v,cid,32));
+      if(id!==playVersion)return;
+      result=selectMp4(d,32,false);
+      usedFallback=true;
+    }
     if(id!==playVersion)return;
-    const result=selectMp4(d,quality,switching);
     mediaSource=https(result.url);mediaFallback=false;
     currentQuality=result.actualQuality;
     renderQualityControl(result.qualities,currentQuality);
+    if(usedFallback)$('#quality-note').textContent=`高清 MP4 暂不可用，已降至 ${qualityLabel(currentQuality)}`;
     video.poster=v.pic;
     if(switching){
       video.addEventListener('loadedmetadata',()=>{
