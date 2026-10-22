@@ -8,7 +8,7 @@ const NAMES = {
 };
 export const qualityLabel = value => NAMES[Number(value)] || `${Number(value)} 档`;
 export function qualityOptions(data) {
-  const entries = Array.isArray(data?.accept_quality) ? data.accept_quality :
+  const entries = Array.isArray(data?.accept_quality) ? [...data.accept_quality] :
     (Array.isArray(data?.support_formats) ? data.support_formats.map(v => v.quality) : []);
   const current = Number(data?.quality);
   if (current) entries.push(current);
