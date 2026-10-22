@@ -4,8 +4,8 @@ const VALID_RANGE = /^\d+-\d+$/;
 const escapeXml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const numeric = (n, fallback=0) => Number.isFinite(Number(n)) ? Number(n) : fallback;
 export function dashVideos(data) {
-  return (data?.dash?.video || []).filter(v => Number.isInteger(Number(v.id))
-    && v.codecs && v.baseUrl || v?.base_url).filter(v => Number(v.id)>0);
+  return (data?.dash?.video || []).filter(v => v && Number.isInteger(Number(v.id))
+    && Number(v.id)>0 && v.codecs && (v.baseUrl || v.base_url));
 }
 export function dashQualities(data) {
   return [...new Set(dashVideos(data).map(v=>Number(v.id)))].sort((a,b)=>b-a);
