@@ -26,6 +26,10 @@ Cloudflare → 用户设备：安装文件、JavaScript、CSS、更新
 
 Cloudflare 已移除动态 Worker；`wrangler.jsonc` 只有静态资产配置。旧的 `/api/bili` 和 `/media` 不再提供服务，静态分发页会清除旧版 Service Worker 和本项目旧版凭据数据库。
 
+## 更新清晰度版本
+
+从安装页面重新安装或在 Userscripts 中更新至 `2.1.0`，刷新 B 站页面即可看到播放器下方的清晰度下拉菜单。旧版 `2.0.1` 不包含该功能。
+
 ## 恢复官方界面
 
 点击「我的 → 返回官方界面」，或访问 `https://www.bilibili.com/?bili_lite=off`，也可以在扩展中停用脚本。脚本不会自动点赞、关注、修改账号设置或退出官方账号。
