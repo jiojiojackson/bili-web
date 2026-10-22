@@ -3,6 +3,9 @@ export async function startDash(video, mpd, position=0){
   shaka.polyfill.installAll();
   if(!shaka.Player.isBrowserSupported())
     throw new Error('此 Safari 不支持所需的 DASH 媒体播放能力');
+  // WebKit requires disableRemotePlayback or an AirPlay-compatible fallback
+  // for ManagedMediaSource to function on iPhone.
+  video.disableRemotePlayback=true;
   const url=URL.createObjectURL(new Blob([mpd],{type:'application/dash+xml'}));
   const player=new shaka.Player();
   try{
