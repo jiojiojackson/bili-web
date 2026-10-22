@@ -1,5 +1,5 @@
 // Every Bilibili request originates on the user's device. There is no relay.
-const PATHS={nav:'/x/web-interface/nav',feed:'/x/web-interface/wbi/index/top/feed/rcmd',feedLegacy:'/x/web-interface/index/top/feed/rcmd',popular:'/x/web-interface/popular',search:'/x/web-interface/search/type',view:'/x/web-interface/view',viewSigned:'/x/web-interface/wbi/view',play:'/x/player/playurl',related:'/x/web-interface/archive/related',following:'/x/polymer/web-dynamic/v1/feed/all'};
+const PATHS={nav:'/x/web-interface/nav',feed:'/x/web-interface/wbi/index/top/feed/rcmd',feedLegacy:'/x/web-interface/index/top/feed/rcmd',popular:'/x/web-interface/popular',search:'/x/web-interface/search/type',view:'/x/web-interface/view',viewSigned:'/x/web-interface/wbi/view',play:'/x/player/playurl',playDash:'/x/player/wbi/playurl',related:'/x/web-interface/archive/related',following:'/x/polymer/web-dynamic/v1/feed/all'};
 export function endpoint(route,params={}){
   if(!Object.hasOwn(PATHS,route))throw new Error('不支持的 B 站接口');
   const url=new URL(PATHS[route],'https://api.bilibili.com');
