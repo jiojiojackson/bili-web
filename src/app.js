@@ -167,7 +167,11 @@ async function playPart(index,quality=preferredQuality,switching=false){
       if(id!==playVersion)return;
       await destroyDash();
       video.pause();video.removeAttribute('src');video.load();
-      const session=await startDash(video,manifest,restoreTime);
+      const session=await startDash(video,manifest,restoreTime,()=>{
+        if(id!==playVersion||!dashSession)return;
+        toast('DASH 视频传输失败，正在恢复 MP4 播放');
+        void playPart(index,32,false);
+      });
       if(id!==playVersion){await session.dispose();return}
       dashSession=session;mediaSource='';
       currentQuality=quality;
@@ -221,6 +225,14 @@ async function playPart(index,quality=preferredQuality,switching=false){
         // If attaching a replacement DASH stream failed, recover the old
         // resolution as a normal MP4 where possible.
         void playPart(index,32,false);
+      }else if(!wasDash&&mediaSource&&video.currentSrc!==mediaSource){
+        video.addEventListener('loadedmetadata',()=>{
+          if(id!==playVersion)return;
+          if(restoreTime&&Number.isFinite(video.duration))
+            video.currentTime=Math.min(restoreTime,Math.max(0,video.duration-.1));
+          if(resume)video.play().catch(()=>{});
+        },{once:true});
+        video.src=mediaSource;
       }else if(!wasDash&&!mediaSource){
         void playPart(index,32,false);
       }
