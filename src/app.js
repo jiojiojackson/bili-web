@@ -1,5 +1,6 @@
 import {api,signed,normalize,count,duration,https,session,setSession} from './api.js';
 import {DEFAULT_QUALITY, qualityLabel, playbackParams, selectMp4} from './quality.js';
+import {dashQualities, manifestForQuality} from './dash.js';
 
 const $=s=>document.querySelector(s);
 const icons={
@@ -28,7 +29,7 @@ function write(key,value){try{localStorage.setItem(`bili:${key}`,JSON.stringify(
 let user=null,tab='recommend',nav='home',query='',page=1,fresh=Date.now()%10000,items=[],loading=false,hasMore=true,offset='',version=0;
 let toastTimer,currentVideo,playVersion=0,mediaFallback=false,mediaSource='',activePart=0;
 let preferredQuality=Number(read('preferred-quality',DEFAULT_QUALITY))||DEFAULT_QUALITY;
-let currentQuality=0, availableQualities=[];
+let currentQuality=0, availableQualities=[], dashResponse=null, dashCid=null, dashSession=null, mp4Qualities=[];
 let history=read('history',[]),saved=read('saved',[]),hidden=new Set(read('hidden',[]));
 const records=new Map();
 
@@ -95,7 +96,7 @@ function toggleSave(v){const exists=saved.some(x=>x.bvid===v.bvid);saved=exists?
 function updateSave(){if(!currentVideo)return;const exists=saved.some(x=>x.bvid===currentVideo.bvid);$('#save-video').innerHTML=`${icon('heart')}${exists?'已加入稍后再看':'稍后再看'}`;$('#save-video').classList.toggle('saved-label',exists)}
 function renderQualityControl(qualities=[],actual=0){
   const select=$('#video-quality');
-  availableQualities=[...new Set([...qualities,actual].map(Number).filter(Boolean))].sort((a,b)=>b-a);
+  availableQualities=[...new Set([...qualities,...dashQualities(dashResponse),actual].map(Number).filter(Boolean))].sort((a,b)=>b-a);
   select.replaceChildren();
   if(!availableQualities.length){
     select.add(new Option('暂无画质信息',''));
@@ -105,47 +106,91 @@ function renderQualityControl(qualities=[],actual=0){
     select.value=String(actual);
     select.disabled=availableQualities.length<2;
   }
-  $('#quality-note').textContent=availableQualities.length<2?'当前视频仅返回一种可选画质':'可用档位由 B 站提供，部分档位可能不支持 MP4';
+  $('#quality-note').textContent=availableQualities.length<2?'此视频暂时只获取到一种画质':'清晰度根据 B 站官方 MP4 与 DASH 播放流提供';
+}
+async function destroyDash(){
+  const session=dashSession;
+  dashSession=null;
+  if(session)try{await session.dispose()}catch{}
+}
+async function probeDash(v,cid,id){
+  try{
+    const result=await api('playDash',await signed({bvid:v.bvid,cid,qn:80,fnval:16,fnver:0,fourk:0}));
+    if(id!==playVersion||!$('#player').open||currentVideo?.bvid!==v.bvid||dashCid!==cid)return;
+    dashResponse=result;
+    renderQualityControl(mp4Qualities,currentQuality);
+    if(dashQualities(result).includes(80))
+      $('#quality-note').textContent='已检测到 1080P DASH 流，可在上方尝试切换';
+  }catch(e){
+    if(id===playVersion&&currentVideo?.bvid===v.bvid)
+      $('#quality-note').textContent='高清 DASH 信息获取失败：'+e.message;
+  }
 }
 function playbackError(message){$('#play-status').innerHTML=`<span>${esc(message)}</span><button class="secondary" id="retry-play">重新播放</button><a class="secondary" href="https://www.bilibili.com/video/${currentVideo.bvid}?bili_lite=off" target="_blank" rel="noopener noreferrer">在 B 站打开 ↗</a>`;$('#retry-play').onclick=()=>playPart(activePart)}
 async function openVideo(v){
-  if(!v)return;closeSheet();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
+  if(!v)return;closeSheet();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;dashResponse=null;dashCid=null;mp4Qualities=[];void destroyDash();renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
   history=[{...v,watched:Date.now()},...history.filter(h=>h.bvid!==v.bvid)].slice(0,100);write('history',history);
   api('related',{bvid:v.bvid}).then(list=>{if(currentVideo?.bvid!==v.bvid||!$('#player').open)return;$('#related').innerHTML=(list||[]).slice(0,12).map(normalize).filter(Boolean).map(x=>card(x)).join('')}).catch(()=>{});
   try{let detail;try{detail=await api('view',{bvid:v.bvid})}catch{try{detail=await api('viewSigned',await signed({bvid:v.bvid}))}catch(e){if(v.cid){if(id===playVersion)await playPart(0);return}throw e}}if(id!==playVersion)return;currentVideo={...normalize(detail),pages:detail.pages,rights:detail.rights};remember(currentVideo);$('#player-info').innerHTML=`<h1>${esc(detail.title)}</h1><p>${esc(detail.owner.name)} · ${count(detail.stat.view)} 次观看 · ${count(detail.stat.danmaku)} 条弹幕</p><p class="description">${esc(detail.desc)}</p>`;if(detail.pages.length>1){$('#parts').innerHTML=detail.pages.map((p,i)=>`<button data-part="${i}">P${i+1} ${esc(p.part)}</button>`).join('');$('#parts').querySelectorAll('button').forEach(b=>b.onclick=()=>playPart(Number(b.dataset.part)))}await playPart(0)}catch(e){if(id===playVersion)playbackError(e.message)}
 }
 async function playPart(index,quality=preferredQuality,switching=false){
   const id=++playVersion,v=currentVideo,video=$('#video'),selector=$('#video-quality');
-  const restoreTime=switching&&index===activePart?video.currentTime:0;
+  const cid=v.pages?.[index]?.cid||v.cid;
+  const restoreTime=switching?video.currentTime:0;
   const resume=!switching||!video.paused;
+  const wasDash=!!dashSession;
   selector.disabled=true;
   if(!switching){
-    activePart=index;video.pause();currentQuality=0;renderQualityControl();
+    activePart=index;video.pause();currentQuality=0;dashResponse=null;dashCid=cid;mp4Qualities=[];
+    renderQualityControl();
     $('#play-status').textContent='正在获取播放地址…';
     $('#parts').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('selected',i===index));
-  }else{
-    $('#quality-note').textContent='正在切换画质…';
-  }
+  }else $('#quality-note').textContent='正在切换画质…';
   try{
-    const cid=v.pages?.[index]?.cid||v.cid;
-    let result,usedFallback=false;
-    try {
-      const d=await api('play',playbackParams(v,cid,quality));
+    let result,usedFallback=false,mp4Error=null;
+    try{
+      const response=await api('play',playbackParams(v,cid,quality));
       if(id!==playVersion)return;
-      result=selectMp4(d,quality,switching);
-    }catch(error){
-      // A higher-resolution rendition can be DASH-only. Keep the original
-      // 480P MP4 behaviour working instead of failing the whole video.
-      if(switching||quality<=32)throw error;
+      result=selectMp4(response,quality,switching);
+    }catch(error){mp4Error=error}
+    if(id!==playVersion)return;
+    // If this quality has no single MP4, inspect real DASH representations.
+    if(switching&&!result){
+      let dash=dashCid===cid?dashResponse:null;
+      if(!dash || !dashQualities(dash).includes(quality)){
+        dash=await api('playDash',await signed({bvid:v.bvid,cid,qn:80,fnval:16,fnver:0,fourk:0}));
+      }
+      if(id!==playVersion)return;
+      dashCid=cid;dashResponse=dash;
+      const manifest=manifestForQuality(dash,quality,v.duration);
+      const {startDash}=await import('./dash-player.js');
+      if(id!==playVersion)return;
+      await destroyDash();
+      video.pause();video.removeAttribute('src');video.load();
+      const session=await startDash(video,manifest,restoreTime);
+      if(id!==playVersion){await session.dispose();return}
+      dashSession=session;mediaSource='';
+      currentQuality=quality;
+      renderQualityControl(mp4Qualities,currentQuality);
+      $('#quality-note').textContent=`${qualityLabel(quality)} · DASH 音视频流`;
+      preferredQuality=quality;write('preferred-quality',quality);
+      $('#play-status').textContent='';
+      if(resume)video.play().catch(()=>{});
+      return;
+    }
+    if(!result){
+      if(quality<=32)throw mp4Error;
       const d=await api('play',playbackParams(v,cid,32));
       if(id!==playVersion)return;
-      result=selectMp4(d,32,false);
-      usedFallback=true;
+      result=selectMp4(d,32,false);usedFallback=true;
     }
+    if(id!==playVersion)return;
+    if(wasDash)await destroyDash();
     if(id!==playVersion)return;
     mediaSource=https(result.url);mediaFallback=false;
     currentQuality=result.actualQuality;
-    renderQualityControl(result.qualities,currentQuality);
+    mp4Qualities=result.qualities;
+    renderQualityControl(mp4Qualities,currentQuality);
     if(usedFallback)$('#quality-note').textContent=`高清 MP4 暂不可用，已降至 ${qualityLabel(currentQuality)}`;
     video.poster=v.pic;
     if(switching){
@@ -156,11 +201,14 @@ async function playPart(index,quality=preferredQuality,switching=false){
         }
         if(resume)video.play().catch(()=>{});
       },{once:true});
-      preferredQuality=quality;
-      write('preferred-quality',quality);
+      preferredQuality=quality;write('preferred-quality',quality);
     }
     video.src=mediaSource;
-    if(!switching)video.play().catch(()=>{});
+    if(!switching){
+      video.play().catch(()=>{});
+      // A separate signed web playback request reveals the DASH-only resolutions.
+      dashCid=cid;void probeDash(v,cid,id);
+    }
     $('#play-status').textContent='';
   }catch(e){
     if(id!==playVersion)return;
@@ -169,10 +217,17 @@ async function playPart(index,quality=preferredQuality,switching=false){
       selector.disabled=availableQualities.length<2;
       $('#quality-note').textContent='无法切换：'+e.message;
       toast(e.message);
+      if(wasDash&&!dashSession){
+        // If attaching a replacement DASH stream failed, recover the old
+        // resolution as a normal MP4 where possible.
+        void playPart(index,32,false);
+      }else if(!wasDash&&!mediaSource){
+        void playPart(index,32,false);
+      }
     }else playbackError(e.message);
   }
 }
-function closePlayer(){++playVersion;currentQuality=0;renderQualityControl();mediaSource='';$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').close();const u=new URL(location.href);u.searchParams.delete('v');historyReplace(u)}
+function closePlayer(){++playVersion;void destroyDash();dashResponse=null;dashCid=null;mp4Qualities=[];currentQuality=0;renderQualityControl();mediaSource='';$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').close();const u=new URL(location.href);u.searchParams.delete('v');historyReplace(u)}
 function historyReplace(u){window.history.replaceState(null,'',u.pathname+u.search)}
 function setNav(value){document.querySelectorAll('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===value))}
 
