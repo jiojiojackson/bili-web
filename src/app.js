@@ -2,6 +2,8 @@ import {api,signed,normalize,count,duration,https,session,setSession} from './ap
 import {DEFAULT_QUALITY, qualityLabel, playbackParams, selectMp4} from './quality.js';
 import {dashQualities, manifestForQuality} from './dash.js';
 import {createCommentPanel} from './comment-view.js';
+import {safeImageUrl} from './comments.js';
+import {validMid,publishTime,creatorUploadsParams,creatorVideo,creatorHasMore} from './creator.js';
 
 const $=s=>document.querySelector(s);
 const icons={
@@ -37,7 +39,7 @@ const records=new Map();
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),2600)}
 function notice(text,action){const n=$('#notice');n.replaceChildren();n.hidden=!text;if(text){n.append(document.createTextNode(text));if(action){const b=document.createElement('button');b.textContent=action.label;b.onclick=action.fn;n.append(b)}}}
 function remember(v){records.set(v.bvid,v);return v}
-function card(v,featured=false){remember(v);return `<article class="card${featured?' featured':''}"><button class="card-open" data-video="${v.bvid}" aria-label="播放：${esc(v.title)}"><div class="cover"><img src="${esc(v.pic)}" alt="" loading="${featured?'eager':'lazy'}" referrerpolicy="no-referrer"><div class="cover-stats"><span class="stat">${icon('play')}${count(v.stat.view)}</span><span class="stat">${icon('danmaku')}${count(v.stat.danmaku)}</span><span class="duration">${duration(v.duration)}</span></div>${featured?`<span class="feature-play">${icon('play')}点击播放</span>`:''}</div><h2 class="card-title">${esc(v.title)}</h2></button><div class="card-footer"><span class="up-icon">${icon('up')}</span><span class="uploader">${esc(v.owner.name)}</span><button class="more-button" data-more="${v.bvid}" aria-label="更多：${esc(v.title)}">${icon('more')}</button></div></article>`}
+function card(v,featured=false){remember(v);return `<article class="card${featured?' featured':''}"><button class="card-open" data-video="${v.bvid}" aria-label="播放：${esc(v.title)}"><div class="cover"><img src="${esc(v.pic)}" alt="" loading="${featured?'eager':'lazy'}" referrerpolicy="no-referrer"><div class="cover-stats"><span class="stat">${icon('play')}${count(v.stat.view)}</span><span class="stat">${icon('danmaku')}${count(v.stat.danmaku)}</span><span class="duration">${duration(v.duration)}</span></div>${featured?`<span class="feature-play">${icon('play')}点击播放</span>`:''}</div><h2 class="card-title">${esc(v.title)}</h2></button><div class="card-footer"><span class="up-icon">${icon('up')}</span>${validMid(v.owner.mid)?`<button type="button" class="uploader uploader-link" data-owner-mid="${esc(v.owner.mid)}" data-owner-name="${esc(v.owner.name)}" data-owner-face="${esc(v.owner.face||'')}" aria-label="查看 ${esc(v.owner.name)} 的主页">${esc(v.owner.name)}</button>`:`<span class="uploader">${esc(v.owner.name)}</span>`}<button class="more-button" data-more="${v.bvid}" aria-label="更多：${esc(v.title)}">${icon('more')}</button></div></article>`}
 function render(){const feed=$('#feed');feed.innerHTML=items.map((v,i)=>card(v,i===0&&nav==='home'&&!query)).join('');feed.setAttribute('aria-busy','false');if(!items.length)empty(query?'没有找到相关视频':'这里还没有视频',query?'换个关键词试试吧。':'下拉刷新，再看看新的推荐。');$('#load-more').hidden=!hasMore||!items.length;$('#load-label').textContent=!hasMore&&items.length?'已经看到这里啦':''}
 function skeleton(){ $('#feed').innerHTML=Array.from({length:7},(_,i)=>`<div class="card skeleton${i===0&&!query?' featured':''}" aria-hidden="true"><div class="cover"></div><div class="skeleton-title"></div><div class="skeleton-author"></div></div>`).join('');$('#feed').setAttribute('aria-busy','true')}
 function empty(title,text,button='再试一次',fn=()=>load(true)){$('#feed').innerHTML=`<div class="empty"><div class="empty-icon">${icon('tv')}</div><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="primary">${button}</button></div>`;$('#feed .primary').onclick=fn;$('#load-more').hidden=true;$('#feed').setAttribute('aria-busy','false')}
@@ -128,12 +130,99 @@ async function probeDash(v,cid,id){
   }
 }
 const comments=createCommentPanel({root:$('#comments-panel'),api,signed,esc,count});
+function videoInfoMarkup(v,description=''){
+  const owner=v.owner||{},mid=owner.mid,face=safeImageUrl(https(owner.face||''));
+  const name=esc(owner.name||'哔哩哔哩用户');
+  const ownerContent=`${face?`<img class="video-owner-avatar" src="${esc(face)}" alt="" referrerpolicy="no-referrer">`:`<span class="video-owner-avatar video-owner-placeholder">UP</span>`}<span class="video-owner-name"><strong>${name}</strong><small>${validMid(mid)?'查看 UP 主主页和视频 ›':'UP 主'}</small></span>`;
+  const ownerRow=validMid(mid)
+    ? `<button type="button" class="video-owner-link" data-owner-mid="${esc(mid)}" data-owner-name="${name}" data-owner-face="${esc(face)}" aria-label="查看 ${name} 的主页和投稿">${ownerContent}</button>`
+    : `<div class="video-owner-link">${ownerContent}</div>`;
+  const date=publishTime(v.pubdate);
+  return `<h1>${esc(v.title)}</h1><div class="video-owner-row">${ownerRow}</div><p class="video-metrics">${count(v.stat?.view||0)} 次观看 · ${count(v.stat?.danmaku||0)} 条弹幕</p><p class="video-published">发布时间：${date?esc(date):'暂未获取'}</p>${description?`<p class="description">${esc(description)}</p>`:''}`;
+}
+
+let creatorToken=0,creatorOwner=null,creatorPage=1,creatorLoading=false,creatorMore=false,creatorSeen=new Set(),creatorResume=false;
+function creatorHeader(profile={}){
+  const owner=creatorOwner||{},name=profile.name||owner.name||'UP 主';
+  const face=safeImageUrl(https(profile.face||owner.face||''));
+  const sign=String(profile.sign||'').trim();
+  $('#creator-heading').textContent=name;
+  $('#creator-profile').innerHTML=`<div class="creator-identity">${face?`<img class="creator-avatar" src="${esc(face)}" alt="" referrerpolicy="no-referrer">`:`<span class="creator-avatar creator-avatar-placeholder">UP</span>`}<div class="creator-identity-text"><h3>${esc(name)}</h3><p>UID: ${esc(owner.mid)}</p></div></div>${sign?`<p class="creator-bio">${esc(sign)}</p>`:''}`;
+  creatorOwner={...owner,name,face};
+}
+function closeCreator(resume=true){
+  ++creatorToken;creatorLoading=false;creatorMore=false;creatorSeen=new Set();
+  if($('#creator-dialog').open)$('#creator-dialog').close();
+  const shouldResume=resume&&creatorResume&&$('#player').open;
+  creatorResume=false;creatorOwner=null;
+  if(shouldResume)$('#video').play().catch(()=>{});
+}
+async function creatorInfo(token){
+  const mid=creatorOwner?.mid;
+  try{
+    const profile=await api('spaceInfo',await signed({mid,web_location:1550101}));
+    if(token!==creatorToken||!creatorOwner||creatorOwner.mid!==mid)return;
+    creatorHeader(profile||{});
+  }catch{
+    if(token===creatorToken)$('#creator-profile-note').textContent='主页资料暂时不可用，可继续查看投稿或打开 B 站官方空间。';
+  }
+}
+async function loadCreatorVideos(){
+  if(!creatorOwner||creatorLoading||!creatorMore||creatorPage>500)return;
+  const token=creatorToken,mid=creatorOwner.mid,page=creatorPage,owner={...creatorOwner};
+  creatorLoading=true;
+  $('#creator-more').disabled=true;
+  $('#creator-video-status').textContent='正在加载投稿…';
+  try{
+    const response=await api('spaceVideos',await signed(creatorUploadsParams(mid,page)));
+    if(token!==creatorToken||!creatorOwner||creatorOwner.mid!==mid)return;
+    const videos=(response?.list?.vlist||[]).map(v=>creatorVideo(v,owner,normalize)).filter(Boolean).filter(v=>{
+      if(creatorSeen.has(v.bvid))return false;
+      creatorSeen.add(v.bvid);return true;
+    });
+    if(videos.length){
+      $('#creator-videos').insertAdjacentHTML('beforeend',videos.map(v=>`<div class="creator-video-tile">${card(v)}<span class="creator-upload-date">${esc(publishTime(v.pubdate)||'')}</span></div>`).join(''));
+    }
+    creatorPage=page+1;
+    creatorMore=creatorHasMore(response,page)&&videos.length>0;
+    $('#creator-more').hidden=!creatorMore;
+    $('#creator-more').textContent='加载更多投稿';
+    $('#creator-video-status').textContent=videos.length?'':($('#creator-videos').children.length?'已经看到这里啦':'还没有公开投稿');
+  }catch(error){
+    if(token!==creatorToken)return;
+    creatorMore=true;
+    $('#creator-more').hidden=false;
+    $('#creator-more').textContent='重新加载投稿';
+    $('#creator-video-status').textContent=`投稿加载失败：${error.message||'网络错误'}。可尝试打开官方空间。`;
+  }finally{
+    if(token===creatorToken){creatorLoading=false;$('#creator-more').disabled=false}
+  }
+}
+function openCreator(owner){
+  const mid=String(owner?.mid??'');
+  if(!validMid(mid)){toast('此视频暂时缺少 UP 主主页信息');return}
+  if($('#creator-dialog').open)closeCreator(false);
+  creatorResume=$('#player').open&&!$('#video').paused;
+  if(creatorResume)$('#video').pause();
+  creatorOwner={mid,name:owner.name||'UP 主',face:owner.face||''};
+  creatorPage=1;creatorLoading=false;creatorMore=true;creatorSeen=new Set();
+  const token=++creatorToken;
+  $('#creator-videos').replaceChildren();
+  $('#creator-profile-note').textContent='';
+  $('#creator-video-status').textContent='';
+  $('#creator-more').hidden=false;
+  $('#creator-official').href=`https://space.bilibili.com/${encodeURIComponent(mid)}`;
+  creatorHeader();
+  $('#creator-dialog').showModal();$('#creator-dialog').scrollTop=0;
+  void creatorInfo(token);
+  void loadCreatorVideos();
+}
 function playbackError(message){$('#play-status').innerHTML=`<span>${esc(message)}</span><button class="secondary" id="retry-play">重新播放</button><a class="secondary" href="https://www.bilibili.com/video/${currentVideo.bvid}?bili_lite=off" target="_blank" rel="noopener noreferrer">在 B 站打开 ↗</a>`;$('#retry-play').onclick=()=>playPart(activePart)}
 async function openVideo(v){
-  if(!v)return;closeSheet();comments.close();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;dashResponse=null;dashCid=null;mp4Qualities=[];void destroyDash();renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;if(v.aid)comments.open(v.aid);$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=`<h1>${esc(v.title)}</h1><p>${esc(v.owner.name)} · ${count(v.stat.view)} 次观看</p>`;updateSave();
+  if(!v)return;if($('#creator-dialog').open)closeCreator(false);if($('#player').open)closePlayer();closeSheet();comments.close();currentVideo=v;mediaSource='';mediaFallback=false;currentQuality=0;dashResponse=null;dashCid=null;mp4Qualities=[];void destroyDash();renderQualityControl();const id=++playVersion;$('#video').pause();$('#video').removeAttribute('src');$('#video').load();$('#player').showModal();$('#player').scrollTop=0;if(v.aid)comments.open(v.aid);$('#official-video').href=`https://www.bilibili.com/video/${v.bvid}?bili_lite=off`;$('#play-status').textContent='正在连接视频…';$('#related').replaceChildren();$('#parts').replaceChildren();$('#player-info').innerHTML=videoInfoMarkup(v);updateSave();
   history=[{...v,watched:Date.now()},...history.filter(h=>h.bvid!==v.bvid)].slice(0,100);write('history',history);
   api('related',{bvid:v.bvid}).then(list=>{if(currentVideo?.bvid!==v.bvid||!$('#player').open)return;$('#related').innerHTML=(list||[]).slice(0,12).map(normalize).filter(Boolean).map(x=>card(x)).join('')}).catch(()=>{});
-  try{let detail;try{detail=await api('view',{bvid:v.bvid})}catch{try{detail=await api('viewSigned',await signed({bvid:v.bvid}))}catch(e){if(v.cid){if(id===playVersion)await playPart(0);return}throw e}}if(id!==playVersion)return;currentVideo={...normalize(detail),pages:detail.pages,rights:detail.rights};comments.open(currentVideo.aid||v.aid);remember(currentVideo);$('#player-info').innerHTML=`<h1>${esc(detail.title)}</h1><p>${esc(detail.owner.name)} · ${count(detail.stat.view)} 次观看 · ${count(detail.stat.danmaku)} 条弹幕</p><p class="description">${esc(detail.desc)}</p>`;if(detail.pages.length>1){$('#parts').innerHTML=detail.pages.map((p,i)=>`<button data-part="${i}">P${i+1} ${esc(p.part)}</button>`).join('');$('#parts').querySelectorAll('button').forEach(b=>b.onclick=()=>playPart(Number(b.dataset.part)))}await playPart(0)}catch(e){if(id===playVersion)playbackError(e.message)}
+  try{let detail;try{detail=await api('view',{bvid:v.bvid})}catch{try{detail=await api('viewSigned',await signed({bvid:v.bvid}))}catch(e){if(v.cid){if(id===playVersion)await playPart(0);return}throw e}}if(id!==playVersion)return;currentVideo={...normalize(detail),pages:detail.pages,rights:detail.rights};comments.open(currentVideo.aid||v.aid);remember(currentVideo);$('#player-info').innerHTML=videoInfoMarkup(currentVideo,detail.desc);if(detail.pages.length>1){$('#parts').innerHTML=detail.pages.map((p,i)=>`<button data-part="${i}">P${i+1} ${esc(p.part)}</button>`).join('');$('#parts').querySelectorAll('button').forEach(b=>b.onclick=()=>playPart(Number(b.dataset.part)))}await playPart(0)}catch(e){if(id===playVersion)playbackError(e.message)}
 }
 async function playPart(index,quality=preferredQuality,switching=false){
   const id=++playVersion,v=currentVideo,video=$('#video'),selector=$('#video-quality');
@@ -250,9 +339,9 @@ $('#avatar').onclick=()=>user?showProfile():showLogin();$('#refresh').onclick=()
 $('#search-form').onsubmit=e=>{e.preventDefault();const value=$('#search').value.trim();if(!value)return;query=value;nav='home';items=[];setNav('home');$('#search').blur();load(true);window.scrollTo({top:0})};$('#search').oninput=()=>{$('#search-clear').hidden=!$('#search').value};$('#search-clear').onclick=()=>{query='';$('#search').value='';$('#search-clear').hidden=true;items=[];load(true)};
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{if(tab===b.dataset.tab&&!query)return;tab=b.dataset.tab;nav='home';query='';$('#search').value='';$('#search-clear').hidden=true;items=[];setNav('home');document.querySelectorAll('[data-tab]').forEach(el=>{const active=el===b;el.classList.toggle('active',active);el.setAttribute('aria-selected',active)});load(true);window.scrollTo({top:0})});
 document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{const value=b.dataset.nav;if(value==='profile')return showProfile();if(value==='messages')return showSheet(`<h2>消息</h2><p>私信与通知请在哔哩哔哩官方消息中心查看。</p><a class="menu-row" href="https://message.bilibili.com/" target="_blank" rel="noopener noreferrer">${icon('message')}打开 B 站消息中心 ↗</a><p class="subtext">使用当前浏览器的 B 站官方登录状态。</p>`);if(nav===value&&value==='home'){window.scrollTo({top:0,behavior:'smooth'});return load(true)}nav=value;query='';$('#search').value='';items=[];setNav(value);load(true);window.scrollTo({top:0})});
-document.addEventListener('click',e=>{const video=e.target.closest('[data-video]');if(video)return openVideo(records.get(video.dataset.video));const more=e.target.closest('[data-more]');if(more)showMore(records.get(more.dataset.more))});
+document.addEventListener('click',e=>{const owner=e.target.closest('[data-owner-mid]');if(owner){openCreator({mid:owner.dataset.ownerMid,name:owner.dataset.ownerName,face:owner.dataset.ownerFace});return}const video=e.target.closest('[data-video]');if(video)return openVideo(records.get(video.dataset.video));const more=e.target.closest('[data-more]');if(more)showMore(records.get(more.dataset.more))});
 $('#sheet .sheet-close').onclick=closeSheet;$('#sheet').onclick=e=>{if(e.target===$('#sheet')){const r=$('#sheet').getBoundingClientRect();if(e.clientY<r.top)closeSheet()}};
-$('#player-close').onclick=closePlayer;$('#player').addEventListener('cancel',e=>{e.preventDefault();closePlayer()});$('#video').onerror=()=>{if(!$('#player').open||!mediaSource)return;playbackError('播放连接失败，可能是 B 站网络限制。')};
+$('#creator-close').onclick=()=>closeCreator();$('#creator-more').onclick=()=>void loadCreatorVideos();$('#creator-dialog').addEventListener('cancel',e=>{e.preventDefault();closeCreator()});$('#player-close').onclick=closePlayer;$('#player').addEventListener('cancel',e=>{e.preventDefault();closePlayer()});$('#video').onerror=()=>{if(!$('#player').open||!mediaSource)return;playbackError('播放连接失败，可能是 B 站网络限制。')};
 $('#video-quality').onchange=()=>{const q=Number($('#video-quality').value);if(q&&currentVideo&&q!==currentQuality)playPart(activePart,q,true)};
 $('#save-video').onclick=()=>currentVideo&&toggleSave(currentVideo);$('#share-video').onclick=async()=>{if(!currentVideo)return;const u=new URL('https://www.bilibili.com/video/'+currentVideo.bvid);u.searchParams.set('bili_lite','on');try{if(navigator.share)await navigator.share({title:currentVideo.title,url:u.href});else{await navigator.clipboard.writeText(u.href);toast('视频链接已复制')}}catch{}};
 

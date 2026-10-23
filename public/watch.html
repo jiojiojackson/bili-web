@@ -11,7 +11,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="description" content="在你的浏览器本地运行的 B 站轻装界面。">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" sizes="180x180" href="https://bili-web.jiojiojackson.workers.dev/apple-touch-icon.png?v=2.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://bili-web.jiojiojackson.workers.dev/apple-touch-icon.png?v=2.4.0">
   <link rel="stylesheet" href="/style.css">
   <title>Bili轻装</title>
 </head>
@@ -40,6 +40,10 @@
   </div>
   <dialog id="sheet" class="sheet"><div class="sheet-handle"></div><button class="sheet-close" aria-label="关闭">×</button><div id="sheet-content"></div></dialog>
   <dialog id="player" class="player-dialog"><div class="player-shell"><div class="player-top"><button id="player-close" aria-label="关闭播放器"></button><span>正在播放</span><a id="official-video" target="_blank" rel="noopener noreferrer">B 站打开 ↗</a></div><div class="video-wrap"><video id="video" controls playsinline preload="metadata"></video><div id="play-status" role="status"></div></div><div class="video-toolbar"><label for="video-quality">清晰度</label><select id="video-quality" aria-label="视频清晰度" disabled><option value="">获取中…</option></select><span id="quality-note" role="status">由 B 站实际返回的画质决定</span></div><div class="player-info" id="player-info"></div><div id="parts" class="parts"></div><div class="player-actions"><button id="save-video"></button><button id="share-video"></button></div><section class="comments-panel" id="comments-panel" aria-label="视频评论" hidden><div class="comments-header"><h2>评论 <span id="comments-count"></span></h2><div class="comments-sort" aria-label="评论排序"><button type="button" data-comment-mode="hot" class="selected" aria-pressed="true">热门</button><button type="button" data-comment-mode="recent" aria-pressed="false">最新</button></div></div><div id="comments-status" class="comments-status" role="status"></div><div id="comments-list" class="comments-list"></div><button type="button" class="comments-more" id="comments-more" hidden>加载更多评论</button><p class="comments-readonly">仅查看 B 站官方评论，暂不支持发表或点赞。</p></section><div class="related-title">接着看</div><div class="feed related" id="related"></div></div></dialog>
+  <dialog id="creator-dialog" class="creator-dialog" aria-labelledby="creator-heading">
+    <header class="creator-top"><button type="button" id="creator-close" aria-label="返回视频">‹</button><h2 id="creator-heading">UP 主空间</h2><a id="creator-official" href="#" target="_blank" rel="noopener noreferrer">官方空间 ↗</a></header>
+    <div class="creator-body"><div id="creator-profile"></div><p id="creator-profile-note" class="creator-profile-note"></p><div class="creator-list-head"><h3>TA 的投稿</h3><span>最新发布</span></div><div id="creator-videos" class="creator-videos"></div><p id="creator-video-status" class="creator-video-status" role="status"></p><button type="button" id="creator-more" class="creator-more">加载更多投稿</button></div>
+  </dialog>
   <div id="toast" class="toast" role="status"></div>
 
 </body>
